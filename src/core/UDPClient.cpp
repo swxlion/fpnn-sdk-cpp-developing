@@ -22,7 +22,7 @@ UDPClient::UDPClient(const std::string& host, int port, bool autoReconnect): Cli
 	}
 
 bool UDPClient::enableEncryptorByDerData(const std::string &derData, bool packageReinforce,
-	bool dataEnhance, bool dataReinforce)
+	bool dataEnhance, bool dataReinforce, const std::string& keyId)
 {
 	EccKeyReader reader;
 
@@ -30,12 +30,12 @@ bool UDPClient::enableEncryptorByDerData(const std::string &derData, bool packag
 	if (derSAX.parse(derData, &reader) == false)
 		return false;
 
-	enableEncryptor(reader.curveName(), reader.rawPublicKey(), packageReinforce, dataEnhance, dataReinforce);
+	enableEncryptor(reader.curveName(), reader.rawPublicKey(), packageReinforce, dataEnhance, dataReinforce, keyId);
 	return true;
 }
 
 bool UDPClient::enableEncryptorByPemData(const std::string &PemData, bool packageReinforce,
-	bool dataEnhance, bool dataReinforce)
+	bool dataEnhance, bool dataReinforce, const std::string& keyId)
 {
 	EccKeyReader reader;
 
@@ -43,28 +43,28 @@ bool UDPClient::enableEncryptorByPemData(const std::string &PemData, bool packag
 	if (pemSAX.parse(PemData, &reader) == false)
 		return false;
 
-	enableEncryptor(reader.curveName(), reader.rawPublicKey(), packageReinforce, dataEnhance, dataReinforce);
+	enableEncryptor(reader.curveName(), reader.rawPublicKey(), packageReinforce, dataEnhance, dataReinforce, keyId);
 	return true;
 }
 
 bool UDPClient::enableEncryptorByDerFile(const char *derFilePath, bool packageReinforce,
-	bool dataEnhance, bool dataReinforce)
+	bool dataEnhance, bool dataReinforce, const std::string& keyId)
 {
 	std::string content;
 	if (FileSystemUtil::readFileContent(derFilePath, content) == false)
 		return false;
 	
-	return enableEncryptorByDerData(content, packageReinforce, dataEnhance, dataReinforce);
+	return enableEncryptorByDerData(content, packageReinforce, dataEnhance, dataReinforce, keyId);
 }
 
 bool UDPClient::enableEncryptorByPemFile(const char *pemFilePath, bool packageReinforce,
-	bool dataEnhance, bool dataReinforce)
+	bool dataEnhance, bool dataReinforce, const std::string& keyId)
 {
 	std::string content;
 	if (FileSystemUtil::readFileContent(pemFilePath, content) == false)
 		return false;
 
-	return enableEncryptorByPemData(content, packageReinforce, dataEnhance, dataReinforce);
+	return enableEncryptorByPemData(content, packageReinforce, dataEnhance, dataReinforce, keyId);
 }
 
 class UDPQuestTask: public ITaskThreadPool::ITask

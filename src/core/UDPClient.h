@@ -23,6 +23,7 @@ namespace fpnn
 		//----------
 		std::string _eccCurve;
 		std::string _serverPublicKey;
+		std::string _encryptionKeyId;
 		bool _packageReinforce;
 		bool _dataEnhance;
 		bool _dataReinforce;
@@ -45,21 +46,25 @@ namespace fpnn
 		  Call by Developer. Configure Function.
 		=============================================================================== */
 		bool enableEncryptorByDerData(const std::string &derData, bool packageReinforce = false,
-			bool dataEnhance = false, bool dataReinforce = false);
+			bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 		bool enableEncryptorByPemData(const std::string &PemData, bool packageReinforce = false,
-			bool dataEnhance = false, bool dataReinforce = false);
+			bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 		bool enableEncryptorByDerFile(const char *derFilePath, bool packageReinforce = false,
-			bool dataEnhance = false, bool dataReinforce = false);
+			bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 		bool enableEncryptorByPemFile(const char *pemFilePath, bool packageReinforce = false,
-			bool dataEnhance = false, bool dataReinforce = false);
+			bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 		inline void enableEncryptor(const std::string& curve, const std::string& peerPublicKey,
-			bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false)
+			bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string())
 		{
 			_eccCurve = curve;
 			_serverPublicKey = peerPublicKey;
+			_encryptionKeyId = keyId;
 			_packageReinforce = packageReinforce;
 			_dataEnhance = dataEnhance;
 			_dataReinforce = dataReinforce;
+
+			if (keyId.empty() == false)
+				throw FPNN_ERROR_MSG(FpnnArgumentError, "Current FPNN UDP v.2 cannot support designating the encryption key id. It need to be changed to UDP.v3.");
 		}
 		/*===============================================================================
 		  Call by Developer.

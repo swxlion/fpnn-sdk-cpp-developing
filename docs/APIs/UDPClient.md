@@ -26,11 +26,11 @@ UDP 客户端内部实现了可靠 UDP 连接，可混合发送可靠和不可�
 		inline static UDPClientPtr createClient(const std::string& host, int port, bool autoReconnect = true);
 		inline static UDPClientPtr createClient(const std::string& endpoint, bool autoReconnect = true);
 
-		bool enableEncryptorByDerData(const std::string &derData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
-		bool enableEncryptorByPemData(const std::string &PemData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
-		bool enableEncryptorByDerFile(const char *derFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
-		bool enableEncryptorByPemFile(const char *pemFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
-		inline void enableEncryptor(const std::string& curve, const std::string& peerPublicKey, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
+		bool enableEncryptorByDerData(const std::string &derData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
+		bool enableEncryptorByPemData(const std::string &PemData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
+		bool enableEncryptorByDerFile(const char *derFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
+		bool enableEncryptorByPemFile(const char *pemFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
+		inline void enableEncryptor(const std::string& curve, const std::string& peerPublicKey, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 
 		//-- Timeout in milliseconds
 		virtual FPAnswerPtr sendQuestEx(FPQuestPtr quest, bool discardable, int timeoutMsec = 0);
@@ -99,7 +99,7 @@ UDPClient 的构造函数为私有成员，无法直接调用。请使用静态�
 
 #### enableEncryptor
 
-	inline void enableEncryptor(const std::string& curve, const std::string& peerPublicKey, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
+	inline void enableEncryptor(const std::string& curve, const std::string& peerPublicKey, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 
 启用链接加密。
 
@@ -136,9 +136,15 @@ UDPClient 的构造函数为私有成员，无法直接调用。请使用静态�
 
 	数据内容加密密钥长度选择：true 表示采用 256 位密钥；false 表示采用 128 位密钥。
 
+* **`std::string& keyId = std::string()`**
+
+	告诉服务端使用指定 id 对应的密钥。默认为空，表示使用默认密钥。
+
+	**注意**：该参数为向前保留参数。当前版本(UDP.v2)仅支持默认密钥，指定密钥需升级到 UDP.v3 才能使用。
+
 #### enableEncryptorByDerData
 
-	bool enableEncryptorByDerData(const std::string &derData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
+	bool enableEncryptorByDerData(const std::string &derData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 
 启用链接加密。
 
@@ -160,9 +166,15 @@ UDPClient 的构造函数为私有成员，无法直接调用。请使用静态�
 
 	数据内容加密密钥长度选择：true 表示采用 256 位密钥；false 表示采用 128 位密钥。
 
+* **`std::string& keyId = std::string()`**
+
+	告诉服务端使用指定 id 对应的密钥。默认为空，表示使用默认密钥。
+
+	**注意**：该参数为向前保留参数。当前版本(UDP.v2)仅支持默认密钥，指定密钥需升级到 UDP.v3 才能使用。
+
 #### enableEncryptorByPemData
 
-	bool enableEncryptorByPemData(const std::string &PemData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
+	bool enableEncryptorByPemData(const std::string &PemData, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 
 启用链接加密。
 
@@ -184,9 +196,15 @@ UDPClient 的构造函数为私有成员，无法直接调用。请使用静态�
 
 	数据内容加密密钥长度选择：true 表示采用 256 位密钥；false 表示采用 128 位密钥。
 
+* **`std::string& keyId = std::string()`**
+
+	告诉服务端使用指定 id 对应的密钥。默认为空，表示使用默认密钥。
+
+	**注意**：该参数为向前保留参数。当前版本(UDP.v2)仅支持默认密钥，指定密钥需升级到 UDP.v3 才能使用。
+
 #### enableEncryptorByDerFile
 
-	bool enableEncryptorByDerFile(const char *derFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
+	bool enableEncryptorByDerFile(const char *derFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 
 启用链接加密。
 
@@ -208,10 +226,16 @@ UDPClient 的构造函数为私有成员，无法直接调用。请使用静态�
 
 	数据内容加密密钥长度选择：true 表示采用 256 位密钥；false 表示采用 128 位密钥。
 
+* **`std::string& keyId = std::string()`**
+
+	告诉服务端使用指定 id 对应的密钥。默认为空，表示使用默认密钥。
+
+	**注意**：该参数为向前保留参数。当前版本(UDP.v2)仅支持默认密钥，指定密钥需升级到 UDP.v3 才能使用。
+
 
 #### enableEncryptorByPemFile
 
-	bool enableEncryptorByPemFile(const char *pemFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false);
+	bool enableEncryptorByPemFile(const char *pemFilePath, bool packageReinforce = false, bool dataEnhance = false, bool dataReinforce = false, const std::string& keyId = std::string());
 
 启用链接加密。
 
@@ -232,6 +256,12 @@ UDPClient 的构造函数为私有成员，无法直接调用。请使用静态�
 * **`bool dataReinforce = false`**
 
 	数据内容加密密钥长度选择：true 表示采用 256 位密钥；false 表示采用 128 位密钥。
+
+* **`std::string& keyId = std::string()`**
+
+	告诉服务端使用指定 id 对应的密钥。默认为空，表示使用默认密钥。
+
+	**注意**：该参数为向前保留参数。当前版本(UDP.v2)仅支持默认密钥，指定密钥需升级到 UDP.v3 才能使用。
 	
 
 #### sendQuestEx

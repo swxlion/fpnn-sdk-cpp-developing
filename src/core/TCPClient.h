@@ -22,6 +22,7 @@ namespace fpnn
 		bool _packageEncryptionMode;
 		std::string _eccCurve;
 		std::string _serverPublicKey;
+		std::string _encryptionKeyId;
 		//----------
 		TCPClientKeepAliveParams* _keepAliveParams;
 		//----------
@@ -58,18 +59,19 @@ namespace fpnn
 		/*===============================================================================
 		  Call by Developer. Configure Function.
 		=============================================================================== */
-		inline void enableEncryptor(const std::string& curve, const std::string& peerPublicKey, bool packageMode = true, bool reinforce = false)
+		inline void enableEncryptor(const std::string& curve, const std::string& peerPublicKey, bool packageMode = true, bool reinforce = false, const std::string& keyId = std::string())
 		{
 			_eccCurve = curve;
 			_serverPublicKey = peerPublicKey;
 			_packageEncryptionMode = packageMode;
 			_AESKeyLen = reinforce ? 32 : 16;
+			_encryptionKeyId = keyId;
 		}
 
-		bool enableEncryptorByDerData(const std::string &derData, bool packageMode = true, bool reinforce = false);
-		bool enableEncryptorByPemData(const std::string &PemData, bool packageMode = true, bool reinforce = false);
-		bool enableEncryptorByDerFile(const char *derFilePath, bool packageMode = true, bool reinforce = false);
-		bool enableEncryptorByPemFile(const char *pemFilePath, bool packageMode = true, bool reinforce = false);
+		bool enableEncryptorByDerData(const std::string &derData, bool packageMode = true, bool reinforce = false, const std::string& keyId = std::string());
+		bool enableEncryptorByPemData(const std::string &PemData, bool packageMode = true, bool reinforce = false, const std::string& keyId = std::string());
+		bool enableEncryptorByDerFile(const char *derFilePath, bool packageMode = true, bool reinforce = false, const std::string& keyId = std::string());
+		bool enableEncryptorByPemFile(const char *pemFilePath, bool packageMode = true, bool reinforce = false, const std::string& keyId = std::string());
 
 		virtual void keepAlive();
 		void setKeepAlivePingTimeout(int seconds);
