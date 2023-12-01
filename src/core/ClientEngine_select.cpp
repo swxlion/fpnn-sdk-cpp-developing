@@ -1,4 +1,4 @@
-#include <poll.h>
+#include <sys/select.h>
 //#include <sys/sysinfo.h>
 //#include <sys/types.h>
 //#include <sys/stat.h>
@@ -26,125 +26,6 @@ using namespace fpnn;
 static std::mutex gc_mutex;
 static std::atomic<bool> _created(false);
 static ClientEnginePtr _engine;
-
-//==================[ Poll Manager ]====================//
-
-struct PollManager
-{
-	struct pollfd* fds;
-	size_t maxCount;
-	size_t currentCount;
-	size_t appendCount;
-
-	std::map<int, struct pollfd*> allFds;
-
-	PollManager(int initCount, int appendCount_)
-	{
-		maxCount = initCount;
-		currentCount = 0;
-		appendCount = appendCount_;
-
-		fds = (struct pollfd*)malloc(sizeof(struct pollfd) * initCount);
-	}
-
-	virtual ~PollManager()
-	{
-		if (fds)
-			free(fds);
-	}
-
-	void join(int fd);
-	void join(std::set<int>& newSockets);
-	void quit(std::set<int>& quitSockets);
-
-	void unsetWriteEvent(int fd)
-	{
-		allFds[fd]->events = POLLIN | POLLPRI;		//-- Linux 暂时不处理 POLLRDHUP.
-	}
-	void setWriteEvent(std::set<int>& wantWriteSocket);
-};
-
-void PollManager::join(int fd)
-{
-	if (allFds.find(fd) != allFds.end())
-		return;
-
-	if (currentCount + 1 > maxCount)
-	{
-		maxCount += appendCount;
-		fds = (struct pollfd*)realloc(fds, maxCount * sizeof(struct pollfd));
-	}
-
-	fds[currentCount].fd = fd;
-	fds[currentCount].events = POLLIN | POLLPRI;		//-- Linux 暂时不处理 POLLRDHUP.
-	fds[currentCount].revents = 0;
-
-	allFds[fd] = &fds[currentCount];
-
-	currentCount += 1;
-}
-
-void PollManager::join(std::set<int>& newSockets)
-{
-	if (currentCount + newSockets.size() > maxCount)
-	{
-		size_t restCount = currentCount + newSockets.size() - maxCount;
-		size_t appendBlockCount = restCount / appendCount;
-		if (appendBlockCount * appendCount < restCount)
-			appendBlockCount += 1;
-
-		maxCount += appendBlockCount * appendCount;
-		fds = (struct pollfd*)realloc(fds, maxCount * sizeof(struct pollfd));
-	}
-
-	for (int fd: newSockets)
-	{
-		if (allFds.find(fd) != allFds.end())
-			continue;
-
-		fds[currentCount].fd = fd;
-		fds[currentCount].events = POLLIN | POLLPRI;		//-- Linux 暂时不处理 POLLRDHUP.
-		fds[currentCount].revents = 0;
-
-		allFds[fd] = &fds[currentCount];
-		currentCount += 1;
-	}
-}
-
-void PollManager::quit(std::set<int>& quitSockets)
-{
-	for (int fd: quitSockets)
-	{
-		for (size_t i = 0; i < currentCount; i++)
-		{
-			if (fds[i].fd == fd)
-			{
-				fds[i].fd = fds[currentCount - 1].fd;
-				fds[i].events = fds[currentCount - 1].events;
-				fds[i].revents = fds[currentCount - 1].revents;
-
-				allFds[fds[currentCount - 1].fd] = &fds[i];
-
-				currentCount -= 1;
-				break;
-			}
-		}
-
-		allFds.erase(fd);
-	}
-}
-
-void PollManager::setWriteEvent(std::set<int>& wantWriteSocket)
-{
-	for (int fd: wantWriteSocket)
-	{
-		auto it = allFds.find(fd);
-		if (it != allFds.end())
-			it->second->events = POLLIN | POLLPRI | POLLOUT;		//-- Linux 暂时不处理 POLLRDHUP. MacOS & Linux 暂时不处理 POLLWRBAND。
-	}	
-}
-
-//==================[ Client Engine ]====================//
 
 ClientEnginePtr ClientEngine::create(const ClientEngineInitParams *params)
 {
@@ -175,9 +56,6 @@ ClientEngine::ClientEngine(const ClientEngineInitParams *params): _running(true)
 	_connectTimeout = params->globalConnectTimeoutSeconds * 1000;
 	_questTimeout = params->globalQuestTimeoutSeconds * 1000;
 
-	_pollInitCount = params->basicConcurrencyCount;
-	_pollAppendCount = params->appendConcurrencyCount;
-
 	if (pipe(_notifyFds) != 0)	//-- Will failed when current processor using to many fds, or the system limitation reached.
 		LOG_FATAL("ClientEngine create pipe for notification failed.");
 
@@ -207,6 +85,13 @@ ClientEngine::~ClientEngine()
 bool ClientEngine::join(const BasicConnection* connection, bool waitForSending)
 {
 	int socket = connection->socket();
+	if (socket >= FD_SETSIZE)
+	{
+		LOG_ERROR("New connection socket %d is large than FD_SETSIZE %d, new connection is refused. %s",
+			socket, FD_SETSIZE, connection->_connectionInfo->str().c_str());
+		return false;
+	}
+
 	_connectionMap.insert(socket, (BasicConnection*)connection);
 
 	{
@@ -386,57 +271,88 @@ void ClientEngine::processConnectionIO(int fd, bool canRead, bool canWrite)
 
 void ClientEngine::loopThread()
 {
-	PollManager pollManager(_pollInitCount, _pollAppendCount);
+	fd_set rfds;
+	fd_set wfds;
+	fd_set efds;
 
-	pollManager.join(_notifyFds[0]);		//-- _notifyFds[0] become pollManager.fds[0].
+	std::set<int> allSocket; //-- except _notifyFds[0].
+	std::set<int> wantWriteSocket;
+
+	struct ConnStatInfo {
+		bool canRead;
+		bool canWrite;
+
+		ConnStatInfo(): canRead(false), canWrite(false) {}
+	};
 
 	while (_running)
 	{
-		int activeCount = poll(pollManager.fds, pollManager.currentCount, -1);
+		FD_ZERO(&rfds);
+		FD_ZERO(&wfds);
+		FD_ZERO(&efds);
+
+		int maxfd = _notifyFds[0];
+
+		FD_SET(_notifyFds[0], &rfds);
+		for (int socket: allSocket)
+		{
+			FD_SET(socket, &rfds);
+			FD_SET(socket, &efds);
+
+			if (socket > maxfd)
+				maxfd = socket;
+		}
+
+		for (int socket: wantWriteSocket)
+			FD_SET(socket, &wfds);
+
+		
+		int activeCount = select(maxfd + 1, &rfds, &wfds, &efds, NULL);
 		if (activeCount > 0)
 		{
 			_loopTicket++;
 
-			if (pollManager.fds[0].revents & (POLLIN | POLLPRI))	//-- pollManager.fds[0] is _notifyFds[0].
-			{
-				activeCount -= 1;
+			if (FD_ISSET(_notifyFds[0], &rfds))		//-- MUST do this before check _running flag.
 				consumeNotifyData();
-				pollManager.fds[0].revents = 0;
-			}
 
 			if (_running == false)
 				break;
 
-			std::set<int> dropped;
-			for (size_t i = 1; i < pollManager.currentCount; i++)
+			std::map<int, ConnStatInfo> connStatus;
+			//-- error & read set
 			{
-				if (pollManager.fds[i].revents)
+				std::set<int> dropped;
+				for (int socket: allSocket)
 				{
-					bool canRead = pollManager.fds[i].revents & (POLLIN | POLLPRI); 
-					bool canWrite = pollManager.fds[i].revents & (POLLOUT | POLLWRBAND);
-
-					if (canWrite)
-						pollManager.unsetWriteEvent(pollManager.fds[i].fd);
-
-					if (canRead || canWrite)
-						processConnectionIO(pollManager.fds[i].fd, canRead, canWrite);
-					else
+					if (FD_ISSET(socket, &efds))
 					{
-						// POLLERR or POLLHUP or POLLNVAL. On Linux, include POLLRDHUP.
-						dropped.insert(pollManager.fds[i].fd);
+						FD_CLR(socket, &wfds);
+
+						dropped.insert(socket);
 					}
+					else if (FD_ISSET(socket, &rfds))
+						connStatus[socket].canRead = true;
+				}
 
-					pollManager.fds[i].revents = 0;
-					activeCount -= 1;
-
-					if (activeCount == 0)
-						break;
+				for (int socket: dropped)
+				{
+					allSocket.erase(socket);
+					wantWriteSocket.erase(socket);
+					clearConnection(socket, FPNN_EC_CORE_UNKNOWN_ERROR);
 				}
 			}
 
-			for (int socket: dropped)
+			//-- write set
 			{
-				clearConnection(socket, FPNN_EC_CORE_UNKNOWN_ERROR);
+				for (int socket: wantWriteSocket)
+					if (FD_ISSET(socket, &wfds))
+						connStatus[socket].canWrite = true;
+			}
+
+			for (auto& csp: connStatus)
+			{
+				processConnectionIO(csp.first, csp.second.canRead, csp.second.canWrite);
+				wantWriteSocket.erase(csp.first);
 			}
 
 			//-- check event flags
@@ -446,53 +362,46 @@ void ClientEngine::loopThread()
 				std::unique_lock<std::mutex> lck(_mutex);
 				if (_quitSocketSetChanged)
 				{
-					dropped.insert(_quitSocketSet.begin(), _quitSocketSet.end());
+					for (int socket: _quitSocketSet)
+					{
+						allSocket.erase(socket);
+						wantWriteSocket.erase(socket);
+					}
 					_quitSocketSet.clear();
 					_quitSocketSetChanged = false;
 				}
 
 				if (_newSocketSetChanged)
 				{
-					pollManager.join(_newSocketSet);
+					for (int socket: _newSocketSet)
+						allSocket.insert(socket);
+					
 					_newSocketSet.clear();
 					_newSocketSetChanged = false;
 				}
 
 				if (_waitWriteSetChanged)
 				{
-					pollManager.setWriteEvent(_waitWriteSet);
+					for (int socket: _waitWriteSet)
+						wantWriteSocket.insert(socket);
+					
 					_waitWriteSet.clear();
 					_waitWriteSetChanged = false;
 				}
 			}
-
-			pollManager.quit(dropped);
 		}
 		else if (activeCount == -1)
 		{
-			if (errno == EINTR || errno == EAGAIN)
+			if (errno == EINTR || errno == EFAULT)
 				continue;
 
-			//-- If you meet these following error log, please tell swxlion@hotmail.com.
-			if (errno == EFAULT)
+			if (errno == EBADF)
 			{
-				LOG_ERROR("EFAULT when poll()! current %d, max %d.", (int)pollManager.currentCount, (int)pollManager.maxCount);
-				continue;
-			}
-
-			if (errno == ENOMEM)
-			{
-				LOG_ERROR("ENOMEM when poll()!");
-				break;
-			}
-
-			if (errno == EINVAL)
-			{
-				LOG_ERROR("EINVAL when poll()! OPEN_MAX is %d.", OPEN_MAX);
+				LOG_ERROR("EBADF when select()! Please tell swxlion@hotmail.com to rewrite all _loopTicket logic and releaseable logic.");
 				break;
 			}
 			
-			LOG_ERROR("Unknown Error when poll() errno: %d", errno);
+			LOG_ERROR("Unknown Error when select() errno: %d", errno);
 			break;
 		}
 	}

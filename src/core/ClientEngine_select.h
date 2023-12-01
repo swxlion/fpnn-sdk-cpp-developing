@@ -25,13 +25,10 @@ namespace fpnn
 		int globalQuestTimeoutSeconds;
 		int residentTaskThread;
 		int maxTaskThreads;
-		int basicConcurrencyCount;				//-- poll 初始化时的 size 大小
-		int appendConcurrencyCount;				//-- poll 每次追加的 size 大小
 
 		bool ignoreSignals;
 
-		ClientEngineInitParams(): globalConnectTimeoutSeconds(5), globalQuestTimeoutSeconds(5),
-			residentTaskThread(4), maxTaskThreads(64), basicConcurrencyCount(32), appendConcurrencyCount(16), ignoreSignals(true) {}
+		ClientEngineInitParams(): globalConnectTimeoutSeconds(5), globalQuestTimeoutSeconds(5), residentTaskThread(4), maxTaskThreads(64), ignoreSignals(true) {}
 	};
 
 	class ClientEngine: virtual public IConcurrentSender
@@ -43,8 +40,6 @@ namespace fpnn
 		int _notifyFds[2];
 		int _connectTimeout;
 		int _questTimeout;
-		int _pollInitCount;
-		int _pollAppendCount;
 		std::atomic<bool> _running;
 		std::set<int> _newSocketSet;
 		std::set<int> _waitWriteSet;
